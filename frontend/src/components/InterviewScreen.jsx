@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { 
-  Mic, MicOff, Send, Loader2, Clock, 
-  AlertCircle, Volume2, VolumeX, CircleDot 
+import {
+  Mic, MicOff, Send, Loader2, Clock,
+  AlertCircle, Volume2, VolumeX, CircleDot
 } from 'lucide-react'
 import { submitAnswer, getNextQuestion, endInterview } from '../services/api'
 import { useInterview } from '../contexts/InterviewContext'
@@ -18,7 +18,8 @@ const InterviewScreen = ({ onComplete, onExit }) => {
     setQuestionCount,
     scores,
     setScores,
-    setInterviewData
+    setInterviewData,
+    isLoaded
   } = useInterview()
 
   const [answer, setAnswer] = useState('')
@@ -29,13 +30,30 @@ const InterviewScreen = ({ onComplete, onExit }) => {
   const [isRecording, setIsRecording] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [showExitModal, setShowExitModal] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [error, setError] = useState(null)
 
   const speechRecognition = useRef(new SpeechRecognitionService())
   const textToSpeech = useRef(new TextToSpeechService())
   const timerRef = useRef(null)
   const questionTimerRef = useRef(null)
 
+  // Check if we have valid session on mount (wait for context to load)
   useEffect(() => {
+    if (!isLoaded) return
+
+    if (!sessionId || !currentQuestion) {
+      setError('Invalid session. Please start a new interview.')
+      setIsInitialized(true)
+      return
+    }
+
+    setIsInitialized(true)
+  }, [isLoaded, sessionId, currentQuestion])
+
+  useEffect(() => {
+    if (!isInitialized) return
+
     // Start interview timer
     timerRef.current = setInterval(() => {
       setTimeElapsed(prev => prev + 1)
@@ -52,7 +70,7 @@ const InterviewScreen = ({ onComplete, onExit }) => {
       speechRecognition.current?.stop()
       textToSpeech.current?.stop()
     }
-  }, [])
+  }, [isInitialized])
 
   useEffect(() => {
     // Reset question timer when question changes
@@ -177,6 +195,33 @@ const InterviewScreen = ({ onComplete, onExit }) => {
     }
   }
 
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          <div className="card">
+            <div className="flex items-center justify-center mb-4">
+              <AlertCircle className="w-12 h-12 text-red-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-center mb-2">Session Error</h2>
+            <p className="text-gray-600 text-center mb-6">{error}</p>
+            <button
+              onClick={() => {
+                localStorage.removeItem('currentRoute')
+                localStorage.removeItem('interviewState')
+                onExit()
+              }}
+              className="btn-primary w-full"
+            >
+              Start New Interview
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen p-4">
       {/* Header */}
@@ -240,11 +285,10 @@ const InterviewScreen = ({ onComplete, onExit }) => {
           </div>
 
           {feedback && (
-            <div className={`mt-6 p-4 rounded-lg ${
-              feedback.score >= 70 ? 'bg-green-50' : 
-              feedback.score >= 50 ? 'bg-yellow-50' : 
-              'bg-red-50'
-            }`}>
+            <div className={`mt-6 p-4 rounded-lg ${feedback.score >= 70 ? 'bg-green-50' :
+                feedback.score >= 50 ? 'bg-yellow-50' :
+                  'bg-red-50'
+              }`}>
               <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold">Your Score</span>
                 <span className="text-2xl font-bold">{feedback.score}/100</span>
@@ -280,11 +324,10 @@ const InterviewScreen = ({ onComplete, onExit }) => {
             <button
               onClick={handleVoiceToggle}
               disabled={loading || feedback !== null}
-              className={`flex-1 flex items-center justify-center px-6 py-3 rounded-lg font-semibold transition-colors ${
-                isRecording 
-                  ? 'bg-red-600 text-white hover:bg-red-700' 
+              className={`flex-1 flex items-center justify-center px-6 py-3 rounded-lg font-semibold transition-colors ${isRecording
+                  ? 'bg-red-600 text-white hover:bg-red-700'
                   : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-              } disabled:opacity-50`}
+                } disabled:opacity-50`}
             >
               {isRecording ? (
                 <>

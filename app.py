@@ -125,18 +125,19 @@ def calculate_semantic_similarity(text1, text2):
 
 @app.route('/resume/analyze', methods=['POST'])
 def analyze_resume():
-    """Analyze candidate resume and extract structured profile"""
+    """Analyze candidate information and extract structured profile"""
     try:
         data = request.json
         resume_text = data.get('resume_text', '')
         
         if not resume_text:
-            return jsonify({'error': 'Resume text is required'}), 400
+            return jsonify({'error': 'Candidate information is required'}), 400
         
-        # AI Prompt for resume analysis
-        prompt = f"""Analyze the following resume and extract structured information in JSON format:
+        # AI Prompt for candidate analysis (accepts resume, PDF text, or "about me" text)
+        prompt = f"""Analyze the following candidate information and extract structured data in JSON format.
+The input can be a resume, PDF content, or a personal description about the candidate.
 
-Resume:
+Candidate Information:
 {resume_text}
 
 Extract and return ONLY a valid JSON object with this exact structure:
@@ -148,10 +149,10 @@ Extract and return ONLY a valid JSON object with this exact structure:
 }}
 
 Rules:
-- skills: List all technical and professional skills
+- skills: List all technical and professional skills mentioned (extract from any format)
 - experience_years: Calculate total years of experience (estimate if needed, default to 0 if unclear)
 - projects: List major projects mentioned (or empty array if none)
-- primary_domain: Primary field/domain (e.g., "Web Development", "Data Science", "Backend Engineering")
+- primary_domain: Primary field/domain (e.g., "Web Development", "Data Science", "Backend Engineering", "DevOps", etc.)
 
 Return ONLY the JSON object, no explanation or markdown formatting."""
         
@@ -180,7 +181,163 @@ Return ONLY the JSON object, no explanation or markdown formatting."""
         }), 200
         
     except json.JSONDecodeError as e:
-        return jsonify({'error': f'Failed to parse AI response: {str(e)}', 'raw_response': response_text}), 500
+        return jsonify({'error': f'Failed to parse AI response: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ======================
+# RESUME-JD MATCHING MODULE
+# ======================
+
+@app.route('/resume/match-jd', methods=['POST'])
+def match_resume_to_jd():
+    """Analyze resume compatibility with job description"""
+    try:
+        data = request.json
+        resume_text = data.get('resume_text', '')
+        job_description = data.get('job_description', '')
+        candidate_id = data.get('candidate_id', '')
+        
+        if not resume_text or not job_description:
+            return jsonify({'error': 'resume_text and job_description are required'}), 400
+        
+        # Get candidate profile (analyze if not exists)
+        if candidate_id and candidate_id in candidate_profiles:
+            candidate_profile = candidate_profiles[candidate_id]
+        else:
+            # Analyze resume on the fly
+            analyze_prompt = f"""Analyze the following candidate information and extract structured data in JSON format.
+
+Candidate Information:
+{resume_text}
+
+Extract and return ONLY a valid JSON object with this exact structure:
+{{
+    "skills": ["skill1", "skill2", ...],
+    "experience_years": <number>,
+    "projects": ["project1", "project2", ...],
+    "primary_domain": "domain name"
+}}"""
+            response_text = call_groq_api(analyze_prompt, temperature=0.2)
+            if response_text.startswith('```'):
+                response_text = response_text.replace('```json', '').replace('```', '').strip()
+            candidate_profile = json.loads(response_text)
+        
+        # AI analysis prompt
+        matching_prompt = f"""Analyze the compatibility between a candidate's resume and a job description.
+
+RESUME:
+{resume_text}
+
+JOB DESCRIPTION:
+{job_description}
+
+Candidate Profile:
+- Skills: {', '.join(candidate_profile.get('skills', []))}
+- Experience: {candidate_profile.get('experience_years', 0)} years
+- Domain: {candidate_profile.get('primary_domain', 'Unknown')}
+
+Provide a detailed JSON analysis with:
+
+{{
+    "ats_score": <0-100 number>,
+    "overall_match": <0-100 number>,
+    "skill_match_percentage": <0-100 number>,
+    "matched_skills": ["skill1", "skill2", ...],
+    "missing_skills": ["skill1", "skill2", ...],
+    "matched_requirements": ["req1", "req2", ...],
+    "unmet_requirements": ["req1", "req2", ...],
+    "experience_match": "Suitable" | "Under-experienced" | "Over-qualified",
+    "summary": "Brief assessment of fit",
+    "strengths": ["strength1", "strength2"],
+    "gaps": ["gap1", "gap2"],
+    "recommendations": ["suggestion1", "suggestion2"]
+}}
+
+ATS Score: How well the resume will pass ATS screening (0-100)
+Overall Match: How well candidate matches the job (0-100)
+Skill Match: Percentage of job-required skills the candidate has
+Experience Match: Whether experience level aligns with job level
+
+Return ONLY the JSON object."""
+        
+        match_text = call_groq_api(matching_prompt, temperature=0.3, max_tokens=2000)
+        
+        if match_text.startswith('```'):
+            match_text = match_text.replace('```json', '').replace('```', '').strip()
+        
+        match_data = json.loads(match_text)
+        
+        return jsonify({
+            'ats_score': match_data.get('ats_score', 0),
+            'overall_match': match_data.get('overall_match', 0),
+            'skill_match_percentage': match_data.get('skill_match_percentage', 0),
+            'matched_skills': match_data.get('matched_skills', []),
+            'missing_skills': match_data.get('missing_skills', []),
+            'matched_requirements': match_data.get('matched_requirements', []),
+            'unmet_requirements': match_data.get('unmet_requirements', []),
+            'experience_match': match_data.get('experience_match', 'Unknown'),
+            'summary': match_data.get('summary', ''),
+            'strengths': match_data.get('strengths', []),
+            'gaps': match_data.get('gaps', []),
+            'recommendations': match_data.get('recommendations', [])
+        }), 200
+        
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Failed to parse matching response: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/resume/rewrite', methods=['POST'])
+def rewrite_resume():
+    """Rewrite resume to better match job description using AI"""
+    try:
+        data = request.json
+        original_resume = data.get('resume_text', '')
+        job_description = data.get('job_description', '')
+        focus_areas = data.get('focus_areas', [])  # Optional: specific areas to focus on
+        
+        if not original_resume or not job_description:
+            return jsonify({'error': 'resume_text and job_description are required'}), 400
+        
+        # Build focus areas text
+        focus_text = ""
+        if focus_areas:
+            focus_text = f"\n\nPriority areas to improve:\n" + "\n".join(f"- {area}" for area in focus_areas)
+        
+        # Rewrite prompt
+        rewrite_prompt = f"""You are an expert resume writer. Rewrite the following resume to better match the job description while keeping all factual information accurate.
+
+ORIGINAL RESUME:
+{original_resume}
+
+TARGET JOB DESCRIPTION:
+{job_description}
+{focus_text}
+
+INSTRUCTIONS:
+1. Keep all factual information accurate - only rephrase and reorganize
+2. Highlight relevant skills that match the job
+3. Use keywords from the job description naturally
+4. Improve ATS optimization (use bullets, clear sections)
+5. Emphasize experience relevant to the job
+6. Make achievements more impactful
+7. Maintain professional formatting
+8. Add missing section headers if needed (Skills, Projects, etc.)
+
+Return the rewritten resume ONLY - no explanations or commentary."""
+        
+        rewritten_resume = call_groq_api(rewrite_prompt, temperature=0.5, max_tokens=3000)
+        
+        # Clean response
+        rewritten_resume = rewritten_resume.strip()
+        
+        return jsonify({
+            'original_resume': original_resume,
+            'rewritten_resume': rewritten_resume,
+            'message': 'Resume has been optimized for the job description'
+        }), 200
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -647,11 +804,16 @@ def get_session_status(session_id):
 if __name__ == '__main__':
     print(f"🚀 Starting AI Interview Platform with Groq ({GROQ_MODEL})")
     print("📋 Endpoints available:")
-    print("   POST /resume/analyze - Analyze resume")
+    print("\n📄 RESUME ENDPOINTS:")
+    print("   POST /resume/analyze - Analyze resume and extract profile")
+    print("   POST /resume/match-jd - Check resume-JD compatibility with ATS score")
+    print("   POST /resume/rewrite - Rewrite resume to match JD better")
+    print("\n🎯 INTERVIEW ENDPOINTS:")
     print("   POST /interview/start - Start interview")
     print("   GET  /interview/next-question - Get next question")
     print("   POST /interview/answer - Submit answer")
     print("   POST /interview/end - End interview")
+    print("\n🔧 UTILITY ENDPOINTS:")
     print("   GET  /health - Health check")
     print("   GET  /session/<id> - Session status")
     app.run(debug=True, host='0.0.0.0', port=5000)
