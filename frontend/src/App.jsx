@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-ro
 import { InterviewProvider, useInterview } from './contexts/InterviewContext'
 import WelcomeScreen from './components/WelcomeScreen'
 import SetupScreen from './components/SetupScreen'
+import CompareScreen from './components/CompareScreen'
 import InterviewScreen from './components/InterviewScreen'
 import SummaryScreen from './components/SummaryScreen'
 
@@ -11,22 +12,17 @@ function AppContent() {
   const location = useLocation()
   const { interviewData } = useInterview()
 
-  // Restore route from localStorage on first load
+  // Clear localStorage when returning to home
   useEffect(() => {
-    const savedRoute = localStorage.getItem('currentRoute')
-    const hasInterviewData = localStorage.getItem('interviewState')
-
-    if (savedRoute && (location.pathname === '/' || location.pathname === '')) {
-      // Only restore if we have valid interview data
-      if (hasInterviewData) {
-        navigate(savedRoute, { replace: true })
-      }
+    if (location.pathname === '/' || location.pathname === '') {
+      localStorage.removeItem('currentRoute')
+      localStorage.removeItem('interviewState')
     }
-  }, [])
+  }, [location.pathname])
 
-  // Save current route to localStorage
+  // Save current route to localStorage (but not for home)
   useEffect(() => {
-    if (location.pathname !== '/') {
+    if (location.pathname !== '/' && location.pathname !== '') {
       localStorage.setItem('currentRoute', location.pathname)
     }
   }, [location.pathname])
@@ -39,6 +35,16 @@ function AppContent() {
           element={
             <WelcomeScreen
               onStart={() => navigate('/setup')}
+              onCompare={() => navigate('/compare')}
+            />
+          }
+        />
+        <Route
+          path="/compare"
+          element={
+            <CompareScreen
+              onBack={() => navigate('/')}
+              onHome={() => navigate('/')}
             />
           }
         />

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from datetime import datetime
 import json
@@ -12,8 +12,8 @@ from groq import Groq
 # Load environment variables
 load_dotenv()
 
-# Initialize Flask app
-app = Flask(__name__)
+# Initialize Flask app with static files configuration
+app = Flask(__name__, static_folder='frontend/dist', static_url_path='')
 CORS(app)
 
 # Configure Groq API
@@ -798,6 +798,20 @@ def get_session_status(session_id):
     }), 200
 
 # ======================
+# STATIC FILE SERVING (FRONTEND)
+# ======================
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    """Serve React frontend files"""
+    # If the path is a file in the dist folder, serve it
+    if path and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    # Otherwise, serve index.html (for client-side routing)
+    return send_from_directory(app.static_folder, 'index.html')
+
+# ======================
 # MAIN
 # ======================
 
@@ -816,4 +830,5 @@ if __name__ == '__main__':
     print("\n🔧 UTILITY ENDPOINTS:")
     print("   GET  /health - Health check")
     print("   GET  /session/<id> - Session status")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.getenv('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
