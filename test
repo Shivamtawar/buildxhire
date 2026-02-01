@@ -1,0 +1,17 @@
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Add your Gemini API key to .env
+GEMINI_API_KEY=your_key_here
+
+# 3. Run the server
+python app.py
+```
+
+## 📊 API Flow
+```
+1. POST /resume/analyze → Get candidate_id
+2. POST /interview/start → Get session_id + first question
+3. POST /interview/answer → Submit answer, get next question
+4. Repeat step 3 (up to 10 questions or early termination)
+5. POST /interview/end → Get final report
