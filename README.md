@@ -1,3 +1,9 @@
+## Video Submission
+
+View the project demonstration and submission: https://drive.google.com/drive/folders/17wR3Gvnd_k41IlKuLDndLatJuya1calV?usp=drive_link
+
+---
+
 # BuildxHire - AI-Powered Interview & Resume Analysis Platform
 
 A modern, full-stack platform that combines AI-powered technical interviews with intelligent resume-job description analysis. Built with React, Flask, and Groq AI.
